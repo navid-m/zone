@@ -90,6 +90,79 @@ func getModuleBaseAddress(pid uint32, exeName string) (uintptr, error) {
 	return 0, errors.New("module not found")
 }
 
+// Read some memory.
+func ReadValue(vt ValueType, exeName, addrStr string) (interface{}, error) {
+	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return nil, err
+	}
+	baseAddr, err := getModuleBaseAddress(pid, exeName)
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err := parseHexAddr(addrStr)
+	if err != nil {
+		return nil, err
+	}
+	addr := baseAddr + offset
+	handle, err := windows.OpenProcess(windows.PROCESS_VM_READ, false, pid)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(handle)
+
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procReadProcessMemory := kernel32.NewProc("ReadProcessMemory")
+
+	switch vt {
+	case FourBytes:
+		var val int32
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			addr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	case Float:
+		var val float32
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			addr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	case Double:
+		var val float64
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			addr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	default:
+		return nil, errors.New("unsupported ValueType")
+	}
+}
+
 // Writes a value relative to the main module base + offset
 func ChangeValue(vt ValueType, exeName, addrStr string, value interface{}) error {
 	pid, err := findProcessIDByName(exeName)
