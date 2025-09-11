@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// Parse some hexadecimal address.
 func parseHexAddr(s string) (uintptr, error) {
 	if len(s) >= 2 && s[:2] == "0x" {
 		s = s[2:]
@@ -26,6 +27,7 @@ func parseHexAddr(s string) (uintptr, error) {
 	return uintptr(val), nil
 }
 
+// Find some process ID by its name.
 func findProcessIDByName(exeName string) (uint32, error) {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
