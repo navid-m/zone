@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 
 	"github.com/navid-m/zone/memory"
 )
 
 func main() {
-	err := memory.ChangeValue(memory.FourBytes, "xonotic-x86.exe", "0x5963B4", int32(9999))
+	err := memory.FreezeValue(memory.FourBytes, "xonotic-x86.exe", "0x5963B4", int32(9999))
+	fmt.Println("Now freezing other thing")
+	err = memory.FreezeValue(memory.FourBytes, "xonotic-x86.exe", "0x596390", int32(9999))
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-	fmt.Println("Value changed successfully!")
+	reader := bufio.NewReader(os.Stdin)
+	reader.ReadString('\n')
 }

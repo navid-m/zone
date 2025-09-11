@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -154,6 +155,80 @@ func ChangeValue(vt ValueType, exeName, addrStr string, value interface{}) error
 	if ret == 0 {
 		return callErr
 	}
+
+	return nil
+}
+
+func FreezeValue(vt ValueType, exeName, addrStr string, value interface{}) error {
+	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return err
+	}
+
+	baseAddr, err := getModuleBaseAddress(pid, exeName)
+	if err != nil {
+		return err
+	}
+
+	offset, err := parseHexAddr(addrStr)
+	if err != nil {
+		return err
+	}
+
+	addr := baseAddr + offset
+
+	handle, err := windows.OpenProcess(windows.PROCESS_VM_WRITE|windows.PROCESS_VM_OPERATION, false, pid)
+	if err != nil {
+		return err
+	}
+
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procWriteProcessMemory := kernel32.NewProc("WriteProcessMemory")
+
+	go func() {
+		defer windows.CloseHandle(handle)
+		for {
+			var dataPtr unsafe.Pointer
+			var dataSize uintptr
+
+			switch vt {
+			case FourBytes:
+				val, ok := value.(int32)
+				if !ok {
+					return
+				}
+				dataPtr = unsafe.Pointer(&val)
+				dataSize = unsafe.Sizeof(val)
+			case Float:
+				val, ok := value.(float32)
+				if !ok {
+					return
+				}
+				dataPtr = unsafe.Pointer(&val)
+				dataSize = unsafe.Sizeof(val)
+			case Double:
+				val, ok := value.(float64)
+				if !ok {
+					return
+				}
+				dataPtr = unsafe.Pointer(&val)
+				dataSize = unsafe.Sizeof(val)
+			default:
+				return
+			}
+
+			var written uintptr
+			procWriteProcessMemory.Call(
+				uintptr(handle),
+				addr,
+				uintptr(dataPtr),
+				dataSize,
+				uintptr(unsafe.Pointer(&written)),
+			)
+
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
 
 	return nil
 }
