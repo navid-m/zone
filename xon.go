@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"zone/memory"
+
+	"github.com/navid-m/zone/memory"
 )
 
 func main() {

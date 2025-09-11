@@ -1,4 +1,4 @@
-module zone
+module github.com/navid-m/zone
 
 go 1.24.5
 
