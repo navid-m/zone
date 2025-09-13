@@ -234,7 +234,8 @@ func ChangeValue(vt ValueType, exeName, addrStr string, value interface{}) error
 	return nil
 }
 
-func FreezeValue(vt ValueType, exeName, addrStr string, value interface{}) error {
+// Freeze some value by repeatedly writing it to the address
+func FreezeValue(vt ValueType, exeName, addrStr string, value any) error {
 	pid, err := findProcessIDByName(exeName)
 	if err != nil {
 		return err
@@ -306,4 +307,223 @@ func FreezeValue(vt ValueType, exeName, addrStr string, value interface{}) error
 	}()
 
 	return nil
+}
+
+// Patches memory with NOP instructions (0x90 bytes)
+func NopPatch(exeName, addrStr string, numBytes int) error {
+	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return err
+	}
+
+	baseAddr, err := getModuleBaseAddress(pid, exeName)
+	if err != nil {
+		return err
+	}
+
+	offset, err := parseHexAddr(addrStr)
+	if err != nil {
+		return err
+	}
+
+	addr := baseAddr + offset
+
+	handle, err := windows.OpenProcess(windows.PROCESS_VM_WRITE|windows.PROCESS_VM_OPERATION, false, pid)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+
+	nopBytes := make([]byte, numBytes)
+	for i := range nopBytes {
+		nopBytes[i] = 0x90
+	}
+
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procWriteProcessMemory := kernel32.NewProc("WriteProcessMemory")
+	var written uintptr
+	ret, _, callErr := procWriteProcessMemory.Call(
+		uintptr(handle),
+		addr,
+		uintptr(unsafe.Pointer(&nopBytes[0])),
+		uintptr(numBytes),
+		uintptr(unsafe.Pointer(&written)),
+	)
+	if ret == 0 {
+		return callErr
+	}
+
+	return nil
+}
+
+// Reads a value through a pointer chain
+func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []string) (interface{}, error) {
+	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return nil, err
+	}
+
+	baseAddr, err := getModuleBaseAddress(pid, exeName)
+	if err != nil {
+		return nil, err
+	}
+
+	initialOffset, err := parseHexAddr(baseAddrStr)
+	if err != nil {
+		return nil, err
+	}
+
+	currentAddr := baseAddr + initialOffset
+
+	handle, err := windows.OpenProcess(windows.PROCESS_VM_READ, false, pid)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(handle)
+
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procReadProcessMemory := kernel32.NewProc("ReadProcessMemory")
+
+	for i, offsetStr := range offsets[:len(offsets)-1] {
+		offset, err := parseHexAddr(offsetStr)
+		if err != nil {
+			return nil, err
+		}
+
+		var ptr uintptr
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			currentAddr,
+			uintptr(unsafe.Pointer(&ptr)),
+			unsafe.Sizeof(ptr),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+
+		currentAddr = ptr + offset
+		_ = i
+	}
+
+	finalOffset, err := parseHexAddr(offsets[len(offsets)-1])
+	if err != nil {
+		return nil, err
+	}
+
+	currentAddr += finalOffset
+
+	switch vt {
+	case FourBytes:
+		var val int32
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			currentAddr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	case Float:
+		var val float32
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			currentAddr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	case Double:
+		var val float64
+		var bytesRead uintptr
+		ret, _, callErr := procReadProcessMemory.Call(
+			uintptr(handle),
+			currentAddr,
+			uintptr(unsafe.Pointer(&val)),
+			unsafe.Sizeof(val),
+			uintptr(unsafe.Pointer(&bytesRead)),
+		)
+		if ret == 0 {
+			return nil, callErr
+		}
+		return val, nil
+	default:
+		return nil, errors.New("unsupported ValueType")
+	}
+}
+
+type MemoryProtection uint32
+
+const (
+	PAGE_NOACCESS          MemoryProtection = 0x01
+	PAGE_READONLY          MemoryProtection = 0x02
+	PAGE_READWRITE         MemoryProtection = 0x04
+	PAGE_WRITECOPY         MemoryProtection = 0x08
+	PAGE_EXECUTE           MemoryProtection = 0x10
+	PAGE_EXECUTE_READ      MemoryProtection = 0x20
+	PAGE_EXECUTE_READWRITE MemoryProtection = 0x40
+	PAGE_EXECUTE_WRITECOPY MemoryProtection = 0x80
+)
+
+// Changes memory protection flags for a region
+func VirtualProtect(exeName, addrStr string, size int, newProtect MemoryProtection) (MemoryProtection, error) {
+	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return 0, err
+	}
+
+	baseAddr, err := getModuleBaseAddress(pid, exeName)
+	if err != nil {
+		return 0, err
+	}
+
+	offset, err := parseHexAddr(addrStr)
+	if err != nil {
+		return 0, err
+	}
+
+	addr := baseAddr + offset
+
+	handle, err := windows.OpenProcess(windows.PROCESS_VM_OPERATION, false, pid)
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(handle)
+
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	procVirtualProtect := kernel32.NewProc("VirtualProtect")
+
+	var oldProtect MemoryProtection
+	ret, _, callErr := procVirtualProtect.Call(
+		addr,
+		uintptr(size),
+		uintptr(newProtect),
+		uintptr(unsafe.Pointer(&oldProtect)),
+	)
+	if ret == 0 {
+		return 0, callErr
+	}
+
+	return oldProtect, nil
+}
+
+// Conveniently, make some memory writable
+func MakeMemoryWritable(exeName, addrStr string, size int) (MemoryProtection, error) {
+	return VirtualProtect(exeName, addrStr, size, PAGE_EXECUTE_READWRITE)
+}
+
+// Conveniently, restore some memory protection
+func RestoreMemoryProtection(exeName, addrStr string, size int, oldProtect MemoryProtection) error {
+	_, err := VirtualProtect(exeName, addrStr, size, oldProtect)
+	return err
 }
