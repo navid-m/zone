@@ -3,6 +3,7 @@ package memory
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"syscall"
 	"time"
@@ -464,10 +465,10 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 				uintptr(unsafe.Pointer(&bytesRead)),
 			)
 			if ret == 0 {
-				return nil, callErr
+				return nil, fmt.Errorf("ReadProcessMemory failed at step %d (addr: 0x%x): %v", i, currentAddr, callErr)
 			}
 			if bytesRead != 4 {
-				return nil, errors.New("failed to read all bytes for pointer")
+				return nil, fmt.Errorf("partial read at step %d (addr: 0x%x): read %d bytes, expected 4", i, currentAddr, bytesRead)
 			}
 			currentAddr = uintptr(ptr32) + offset
 		} else {
@@ -480,10 +481,10 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 				uintptr(unsafe.Pointer(&bytesRead)),
 			)
 			if ret == 0 {
-				return nil, callErr
+				return nil, fmt.Errorf("ReadProcessMemory failed at step %d (addr: 0x%x): %v", i, currentAddr, callErr)
 			}
 			if bytesRead != 8 {
-				return nil, errors.New("failed to read all bytes for pointer")
+				return nil, fmt.Errorf("partial read at step %d (addr: 0x%x): read %d bytes, expected 8", i, currentAddr, bytesRead)
 			}
 			currentAddr = ptr + offset
 		}
