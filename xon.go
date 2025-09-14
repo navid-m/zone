@@ -14,6 +14,7 @@ type Vector3 struct {
 
 type Refdef struct {
 	Health int32
+	Ammo   int32
 	Pitch  float32
 	Yaw    float32
 	Coords Vector3
@@ -33,6 +34,7 @@ func main() {
 			health, _ = memory.ReadValue(memory.FourBytes, "xonotic.exe", "0x627410")
 			pitch, _  = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F68")
 			yaw, _    = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F6C")
+			ammo, _   = memory.ReadValue(memory.FourBytes, "xonotic.exe", "0x627428")
 		)
 
 		refdef.Coords.X = val.(float32)
@@ -41,6 +43,7 @@ func main() {
 		refdef.Pitch = pitch.(float32)
 		refdef.Yaw = yaw.(float32)
 		refdef.Health = health.(int32)
+		refdef.Ammo = ammo.(int32)
 		fmt.Println(refdef)
 	}
 
