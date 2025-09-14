@@ -37,6 +37,9 @@ func parseHexAddr(s string) (uintptr, error) {
 	if len(s) >= 2 && s[:2] == "0x" {
 		s = s[2:]
 	}
+	if len(s)%2 == 1 {
+		s = "0" + s
+	}
 	_, err := hex.DecodeString(s)
 	if err != nil {
 		return 0, err
