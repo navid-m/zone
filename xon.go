@@ -23,11 +23,15 @@ func main() {
 			val2, _   = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F90")
 			val3, _   = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F94")
 			health, _ = memory.ReadValue(memory.FourBytes, "xonotic.exe", "0x627410")
+			pitch, _  = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F68")
+			yaw, _    = memory.ReadValue(memory.Float, "xonotic.exe", "0x621F6C")
 		)
 
 		refdef.X = val.(float32)
 		refdef.Y = val2.(float32)
 		refdef.Z = val3.(float32)
+		refdef.Pitch = pitch.(float32)
+		refdef.Yaw = yaw.(float32)
 		refdef.Health = health.(int32)
 		fmt.Println(refdef)
 	}
