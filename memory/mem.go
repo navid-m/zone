@@ -51,6 +51,22 @@ func parseHexAddr(s string) (uintptr, error) {
 	return uintptr(val), nil
 }
 
+// Check if the process is 32-bit (WOW64)
+func isProcess32Bit(pid uint32) (bool, error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_INFORMATION, false, pid)
+	if err != nil {
+		return false, err
+	}
+	defer windows.CloseHandle(handle)
+
+	var isWow64 bool
+	err = windows.IsWow64Process(handle, &isWow64)
+	if err != nil {
+		return false, err
+	}
+	return isWow64, nil
+}
+
 // Find some process ID by its name.
 func findProcessIDByName(exeName string) (uint32, error) {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -149,6 +165,9 @@ func ReadValue(vt ValueType, exeName, addrStr string) (interface{}, error) {
 		if ret == 0 {
 			return nil, callErr
 		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for FourBytes")
+		}
 		return val, nil
 	case Float:
 		var val float32
@@ -163,6 +182,9 @@ func ReadValue(vt ValueType, exeName, addrStr string) (interface{}, error) {
 		if ret == 0 {
 			return nil, callErr
 		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for Float")
+		}
 		return val, nil
 	case Double:
 		var val float64
@@ -176,6 +198,9 @@ func ReadValue(vt ValueType, exeName, addrStr string) (interface{}, error) {
 		)
 		if ret == 0 {
 			return nil, callErr
+		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for Double")
 		}
 		return val, nil
 	default:
@@ -252,6 +277,9 @@ func ChangeValue(vt ValueType, exeName, addrStr string, value interface{}) error
 	if ret == 0 {
 		return callErr
 	}
+	if written != dataSize {
+		return errors.New("failed to write all bytes")
+	}
 
 	return nil
 }
@@ -316,13 +344,16 @@ func FreezeValue(vt ValueType, exeName, addrStr string, value any) error {
 			}
 
 			var written uintptr
-			procWriteProcessMemory.Call(
+			ret, _, _ := procWriteProcessMemory.Call(
 				uintptr(handle),
 				addr,
 				uintptr(dataPtr),
 				dataSize,
 				uintptr(unsafe.Pointer(&written)),
 			)
+			if ret == 0 || written != dataSize {
+				continue
+			}
 
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -374,6 +405,9 @@ func NopPatch(exeName, addrStr string, numBytes int) error {
 	if ret == 0 {
 		return callErr
 	}
+	if written != uintptr(numBytes) {
+		return errors.New("failed to write all NOP bytes")
+	}
 
 	return nil
 }
@@ -381,6 +415,11 @@ func NopPatch(exeName, addrStr string, numBytes int) error {
 // Reads a value through a pointer chain
 func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []string) (interface{}, error) {
 	pid, err := findProcessIDByName(exeName)
+	if err != nil {
+		return nil, err
+	}
+
+	isWow64, err := isProcess32Bit(pid)
 	if err != nil {
 		return nil, err
 	}
@@ -412,20 +451,42 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 			return nil, err
 		}
 
-		var ptr uintptr
 		var bytesRead uintptr
-		ret, _, callErr := procReadProcessMemory.Call(
-			uintptr(handle),
-			currentAddr,
-			uintptr(unsafe.Pointer(&ptr)),
-			unsafe.Sizeof(ptr),
-			uintptr(unsafe.Pointer(&bytesRead)),
-		)
-		if ret == 0 {
-			return nil, callErr
+		var ret uintptr
+		var callErr error
+		if isWow64 {
+			var ptr32 uint32
+			ret, _, callErr = procReadProcessMemory.Call(
+				uintptr(handle),
+				currentAddr,
+				uintptr(unsafe.Pointer(&ptr32)),
+				4,
+				uintptr(unsafe.Pointer(&bytesRead)),
+			)
+			if ret == 0 {
+				return nil, callErr
+			}
+			if bytesRead != 4 {
+				return nil, errors.New("failed to read all bytes for pointer")
+			}
+			currentAddr = uintptr(ptr32) + offset
+		} else {
+			var ptr uintptr
+			ret, _, callErr = procReadProcessMemory.Call(
+				uintptr(handle),
+				currentAddr,
+				uintptr(unsafe.Pointer(&ptr)),
+				8,
+				uintptr(unsafe.Pointer(&bytesRead)),
+			)
+			if ret == 0 {
+				return nil, callErr
+			}
+			if bytesRead != 8 {
+				return nil, errors.New("failed to read all bytes for pointer")
+			}
+			currentAddr = ptr + offset
 		}
-
-		currentAddr = ptr + offset
 		_ = i
 	}
 
@@ -450,6 +511,9 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 		if ret == 0 {
 			return nil, callErr
 		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for FourBytes")
+		}
 		return val, nil
 	case Float:
 		var val float32
@@ -464,6 +528,9 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 		if ret == 0 {
 			return nil, callErr
 		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for Float")
+		}
 		return val, nil
 	case Double:
 		var val float64
@@ -477,6 +544,9 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 		)
 		if ret == 0 {
 			return nil, callErr
+		}
+		if bytesRead != unsafe.Sizeof(val) {
+			return nil, errors.New("failed to read all bytes for Double")
 		}
 		return val, nil
 	default:
