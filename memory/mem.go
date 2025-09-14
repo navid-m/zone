@@ -62,6 +62,19 @@ const (
 	Double
 )
 
+type MemoryProtection uint32
+
+const (
+	PAGE_NOACCESS          MemoryProtection = 0x01
+	PAGE_READONLY          MemoryProtection = 0x02
+	PAGE_READWRITE         MemoryProtection = 0x04
+	PAGE_WRITECOPY         MemoryProtection = 0x08
+	PAGE_EXECUTE           MemoryProtection = 0x10
+	PAGE_EXECUTE_READ      MemoryProtection = 0x20
+	PAGE_EXECUTE_READWRITE MemoryProtection = 0x40
+	PAGE_EXECUTE_WRITECOPY MemoryProtection = 0x80
+)
+
 // Returns the base address of the main module of a process
 func getModuleBaseAddress(pid uint32, exeName string) (uintptr, error) {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPMODULE|windows.TH32CS_SNAPMODULE32, pid)
@@ -112,13 +125,17 @@ func ReadValue(vt ValueType, exeName, addrStr string) (interface{}, error) {
 	}
 	defer windows.CloseHandle(handle)
 
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	procReadProcessMemory := kernel32.NewProc("ReadProcessMemory")
+	var (
+		kernel32              = syscall.NewLazyDLL("kernel32.dll")
+		procReadProcessMemory = kernel32.NewProc("ReadProcessMemory")
+	)
 
 	switch vt {
 	case FourBytes:
-		var val int32
-		var bytesRead uintptr
+		var (
+			val       int32
+			bytesRead uintptr
+		)
 		ret, _, callErr := procReadProcessMemory.Call(
 			uintptr(handle),
 			addr,
@@ -188,8 +205,10 @@ func ChangeValue(vt ValueType, exeName, addrStr string, value interface{}) error
 	}
 	defer windows.CloseHandle(handle)
 
-	var dataPtr unsafe.Pointer
-	var dataSize uintptr
+	var (
+		dataPtr  unsafe.Pointer
+		dataSize uintptr
+	)
 
 	switch vt {
 	case FourBytes:
@@ -462,19 +481,6 @@ func ReadPointerChain(vt ValueType, exeName, baseAddrStr string, offsets []strin
 	}
 }
 
-type MemoryProtection uint32
-
-const (
-	PAGE_NOACCESS          MemoryProtection = 0x01
-	PAGE_READONLY          MemoryProtection = 0x02
-	PAGE_READWRITE         MemoryProtection = 0x04
-	PAGE_WRITECOPY         MemoryProtection = 0x08
-	PAGE_EXECUTE           MemoryProtection = 0x10
-	PAGE_EXECUTE_READ      MemoryProtection = 0x20
-	PAGE_EXECUTE_READWRITE MemoryProtection = 0x40
-	PAGE_EXECUTE_WRITECOPY MemoryProtection = 0x80
-)
-
 // Changes memory protection flags for a region
 func VirtualProtect(exeName, addrStr string, size int, newProtect MemoryProtection) (MemoryProtection, error) {
 	pid, err := findProcessIDByName(exeName)
@@ -493,7 +499,6 @@ func VirtualProtect(exeName, addrStr string, size int, newProtect MemoryProtecti
 	}
 
 	addr := baseAddr + offset
-
 	handle, err := windows.OpenProcess(windows.PROCESS_VM_OPERATION, false, pid)
 	if err != nil {
 		return 0, err
