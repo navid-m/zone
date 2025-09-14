@@ -44,6 +44,7 @@ func main() {
 		refdef.Yaw = yaw.(float32)
 		refdef.Health = health.(int32)
 		refdef.Ammo = ammo.(int32)
+
 		fmt.Println(refdef)
 	}
 
