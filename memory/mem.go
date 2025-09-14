@@ -11,6 +11,27 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+type ValueType int
+
+const (
+	FourBytes ValueType = iota
+	Float
+	Double
+)
+
+type MemoryProtection uint32
+
+const (
+	PAGE_NOACCESS          MemoryProtection = 0x01
+	PAGE_READONLY          MemoryProtection = 0x02
+	PAGE_READWRITE         MemoryProtection = 0x04
+	PAGE_WRITECOPY         MemoryProtection = 0x08
+	PAGE_EXECUTE           MemoryProtection = 0x10
+	PAGE_EXECUTE_READ      MemoryProtection = 0x20
+	PAGE_EXECUTE_READWRITE MemoryProtection = 0x40
+	PAGE_EXECUTE_WRITECOPY MemoryProtection = 0x80
+)
+
 // Parse some hexadecimal address.
 func parseHexAddr(s string) (uintptr, error) {
 	if len(s) >= 2 && s[:2] == "0x" {
@@ -53,27 +74,6 @@ func findProcessIDByName(exeName string) (uint32, error) {
 	}
 	return 0, errors.New("process not found")
 }
-
-type ValueType int
-
-const (
-	FourBytes ValueType = iota
-	Float
-	Double
-)
-
-type MemoryProtection uint32
-
-const (
-	PAGE_NOACCESS          MemoryProtection = 0x01
-	PAGE_READONLY          MemoryProtection = 0x02
-	PAGE_READWRITE         MemoryProtection = 0x04
-	PAGE_WRITECOPY         MemoryProtection = 0x08
-	PAGE_EXECUTE           MemoryProtection = 0x10
-	PAGE_EXECUTE_READ      MemoryProtection = 0x20
-	PAGE_EXECUTE_READWRITE MemoryProtection = 0x40
-	PAGE_EXECUTE_WRITECOPY MemoryProtection = 0x80
-)
 
 // Returns the base address of the main module of a process
 func getModuleBaseAddress(pid uint32, exeName string) (uintptr, error) {
